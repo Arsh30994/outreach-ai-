@@ -1,0 +1,13 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+logs/
+data/*.db
+data/*.csv
+*.sqlite
+credentials.json
+token.json
+gmail_token.json
+*-token.json

@@ -1,115 +1,96 @@
-# Automated Micro-Influencer Outreach System
+# CreatorReach AI
 
-Discovery → Data collection → Filtering → Enrichment → AI personalization → Human review → Sending → Tracking.
-Built for the EDXSO AI Engineer Intern assignment (Technology / AI creators on YouTube).
+Python CLI for discovering technology and AI micro-influencers on YouTube and preparing outreach that a person approves before anything is sent.
 
-**Data integrity rule:** nothing is fabricated. Every metric comes from the YouTube Data API or is calculated from
-it; emails come only from public channel text / linked public pages; anything unavailable is written as
-`Not Found`. Test fixtures are synthetic and live only inside `tests/`; they are never exported.
+This revision implements the project foundation:
 
-## Technology stack
-Python 3.10+, `requests`, SQLite (`sqlite3`), PyYAML, python-dotenv, Anthropic SDK (optional), `unittest`.
-SQL is kept portable so the DB can move to PostgreSQL.
+- package layout for later pipeline stages
+- `config.yaml` plus environment variables, validated with Pydantic
+- secret redaction in logs and configuration errors
+- SQLite bootstrap (`schema_migrations` only)
+- commands `init-db`, `status`, and `quota`
 
-## APIs / tools used
-| Tool | Purpose |
-|---|---|
-| YouTube Data API v3 (`search`, `channels`, `playlistItems`, `videos`) | discovery, subscriber counts, recent video stats |
-| Anthropic Claude API (optional) | niche/theme classification, email + DM generation |
-| SMTP (e.g. Gmail app password) | live sending (off by default) |
-| Public creator websites (robots.txt respected) | contact-email enrichment |
+YouTube requests, engagement math, scoring, enrichment, LLM calls, approval, Gmail, and Instagram export are not part of this revision. Older prototype modules remain at the repository root. The supported entry point is `python -m outreach.cli`.
 
 ## Setup
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env         # add YOUTUBE_API_KEY (and ANTHROPIC_API_KEY if you have one)
-# edit config.yaml: brand block (placeholder brand!), queries, thresholds
-python -m unittest discover -s tests -t .      # 40 tests, no network needed
-python -m outreach.cli run                     # full pipeline, dry-run, writes CSVs to data/
+cp .env.example .env
 ```
-Get a YouTube key: Google Cloud Console → enable *YouTube Data API v3* → Credentials → API key.
 
-### Step-by-step commands
+Run commands from the repository root.
+
+## Environment variables
+
+| Variable | Role |
+|---|---|
+| `YOUTUBE_API_KEY` | YouTube Data API key. Required only when a later discovery command asks for it. |
+| `ANTHROPIC_API_KEY` | Optional Anthropic key. |
+| `ANTHROPIC_MODEL` | Model name. Default `claude-sonnet-4-5`. |
+| `OUTREACH_MODE` | `dry_run` (default), `test`, or `live`. |
+| `SEND_TEST_EMAIL_TO` | Required when `OUTREACH_MODE=test`. |
+| `GMAIL_CREDENTIALS_FILE` | OAuth client file. Required when `OUTREACH_MODE=live`. |
+| `GMAIL_TOKEN_FILE` | OAuth token file. Required when `OUTREACH_MODE=live`. |
+
+Optional overrides: `OUTREACH_DB_PATH`, `OUTREACH_EXPORT_DIR`, `MIN_FOLLOWERS`, `MAX_FOLLOWERS`, `PAGES_PER_QUERY`, `RECENT_UPLOAD_DAYS`, `MIN_ENGAGEMENT_RATE`, `QUOTA_DAILY_BUDGET`, `QUOTA_SAFETY_BUDGET`, `QUOTA_SAFETY_MARGIN`, `CACHE_TTL_DAYS`.
+
+`test` mode fails config load until `SEND_TEST_EMAIL_TO` is set. `live` mode fails config load until both Gmail paths are set. `dry_run` loads without those values. API keys belong in `.env`, not in `config.yaml`.
+
+## Configuration
+
+`config.yaml` holds the brand placeholder, YouTube queries, follower range (5,000–100,000), minimum engagement (1.0), recent-upload window (90 days), preferred countries, collaboration type, quota costs, and cache TTL.
+
+Shipped quota settings:
+
+- `search.list`: 100 units per request/page
+- `channels.list`: 1 unit
+- `playlistItems.list`: 1 unit
+- `videos.list`: 1 unit
+- daily budget: 10,000 units
+- safety budget: 9,000 units
+- safety margin: 1,000 units
+- search calls per day: 100
+- one search page per query
+- cache TTL: 7 days
+
+The loader rejects a search plan whose pages would exceed the safety budget or the daily search-call cap. No YouTube calls are made by this revision, so recorded usage is 0.
+
+## Commands
+
 ```bash
-python -m outreach.cli discover      # search + store candidate channels
-python -m outreach.cli collect       # recent videos + engagement for in-range channels
-python -m outreach.cli classify      # niche/themes (LLM or keyword fallback)
-python -m outreach.cli score         # PASS / REVIEW / FAIL with reasons
-python -m outreach.cli enrich        # public email / website / Instagram for PASS+REVIEW
-python -m outreach.cli generate      # email (60-90 words) + DM (15-30 words)
-python -m outreach.cli export        # CSV deliverables
-python -m outreach.cli approve --all-pass           # human-review gate (or approve specific ids)
-python -m outreach.cli send --all-approved          # DRY-RUN by default -> status SIMULATED
-python -m outreach.cli send --all-approved          # run again -> BLOCKED_DUPLICATE (demo of dedupe)
+python -m outreach.cli init-db
 python -m outreach.cli status
+python -m outreach.cli quota
 ```
-Live sending: set `DRY_RUN=false`, SMTP vars, and `SEND_TEST_EMAIL_TO=you@yourmail` (all live mail is redirected
-to you; the log keeps the intended recipient), then `send ... --confirm`. Max 5 emails per call (`--limit`).
 
-## Data sources
-YouTube Data API v3 (official). Instagram/TikTok are intentionally **not** scraped (ToS). Instagram handles are
-only recorded when a creator links them publicly; DMs go to a manual queue.
+`init-db` creates `data/outreach.db` and the `schema_migrations` table (version 1, `foundation`). It is safe to run again. `status` reports that file and the configured follower range. `quota` prints the unit costs and the configured search plan.
 
-## Discovery methodology
-Keyword queries from `config.yaml` → `search.list` (type=channel) → de-duplicate → batched `channels.list`
-(50 ids per call) → store all candidates → micro range 5,000–100,000 subscribers applied in filtering.
-Quota: `search.list` = 100 units, other reads = 1 unit, default 10,000 units/day. The client tracks units, stops
-at `quota_budget`, caches every response in SQLite (re-runs cost 0), retries 429/5xx with backoff, and fetches
-recent videos through the uploads playlist (2 units) instead of searching. Subscriber counts are API-reported
-and may be rounded by YouTube. Verify current quota costs in Google's docs before submitting.
+## Tests
 
-## Filtering logic (`outreach/scoring.py`)
-Hard gates → automatic **FAIL** with a reason: hidden/out-of-range subscribers, no public videos, no upload in
-90 days, engagement < 1%. Otherwise a 100-point fit score:
-audience size 20, niche relevance 25 (word-boundary term matches), content relevance 20 (share of recent videos
-matching), engagement 20, activity 10, geography 5 (declared channel country vs `preferred_countries`).
-≥75 PASS, 60–74 REVIEW, else FAIL. The per-component breakdown and reasons are stored and exported.
-Having an email does not affect fit; it only decides whether email outreach is possible.
+```bash
+python -m unittest discover -s tests -t .
+```
 
-**Engagement rate** = (avg likes + avg comments) / avg views × 100 over the latest ≤10 public videos
-(videos with hidden likes or zero views are excluded; sample size is stored). It is an approximation from public
-data, not creator analytics.
+Tests cover configuration parsing, secret handling, and the three CLI commands. They do not call YouTube, Anthropic, or Gmail.
 
-## Enrichment process
-For PASS/REVIEW creators only: regex the channel description for emails (filtering junk like `x@2x.png`), extract
-website / Instagram links, then — if no email yet — fetch the creator's own site (`/`, `/contact`, `/about`) with
-a polite fetcher (robots.txt, timeouts, size cap, public hosts only). Email source is recorded
-(`channel_description` or `website:<url>`). YouTube's hidden "View email" button is **not** bypassed. Audience
-age/gender/geography are not publicly available → `Not Found`. `Creator Country` is the creator-declared channel
-country, not audience geography.
+## Layout
 
-## AI model and prompts (`outreach/classify.py`, `outreach/personalize.py`)
-Default model `claude-sonnet-5-5` (override with `ANTHROPIC_MODEL`). Three separate prompts: classification
-(JSON), email (JSON subject/body), DM (JSON). Each is grounded only in supplied facts and forbids invention.
+```text
+outreach/            package
+outreach/services/   later pipeline stages
+outreach/providers/  later API clients
+outreach/prompts/    later prompt files
+tests/               unit tests
+tests/fixtures/      synthetic fixtures only
+data/                local database (gitignored)
+docs/                notes
+config.yaml
+.env.example
+```
 
-## Personalization logic
-Inputs: channel name, niche, themes, style, most recent video title, brand block, collaboration type. Outputs are
-validated in code (word counts, no `[placeholders]`, must reference real video/theme words). On failure the model
-is re-prompted with the specific problem (3 attempts), then the **offline composer** is used, which builds the
-text from the same real fields with seeded phrasing variation and is labelled `offline-fallback` in the output.
-Compensation is stated explicitly (FTC: material connections must be disclosed).
+## Data handling in this revision
 
-## Sending mechanism (`outreach/sender.py`)
-Requires valid public email + approved message. Dry-run by default (status `SIMULATED`). Duplicate prevention:
-(1) check for prior SENT/SIMULATED by influencer **or** email address, (2) SQLite partial unique index as a hard
-backstop. Append-only log in `outreach` table; statuses: SENT, SIMULATED, SKIPPED_NO_EMAIL,
-BLOCKED_NOT_APPROVED, BLOCKED_DUPLICATE, FAILED. Emails get an opt-out line and postal address footer.
-**Instagram DMs are never auto-sent**; they are written to `instagram_dm_queue.csv` for manual sending.
-
-## Outputs (`data/`)
-`influencers.csv` (all discovered, with PASS/REVIEW/FAIL + reasons, provenance columns), `personalized_messages.csv`,
-`outreach_tracker.csv`, `outreach_log.csv`, `instagram_dm_queue.csv`, plus `outreach.db`.
-
-## Scalability
-Stages are idempotent and resumable (per-row timestamps), failures are isolated per creator (`last_error`),
-responses are cached, quota is budgeted. For 500+ creators: more queries / `pages_per_query`, request a quota
-increase, move SQLite → PostgreSQL, run stages as scheduled jobs.
-
-## Limitations
-- Emails: only a fraction of channels publish one; expect many `Not Found`.
-- Engagement is approximate; subscriber counts may be rounded; niche matching is keyword-based.
-- YouTube only; Instagram/TikTok are out of scope for automation.
-- Brand block in `config.yaml` is a placeholder; edit before use.
-- Tests use mocked APIs; run the live pipeline with your own keys. No audience demographics are available.
-- Cold-email laws (CAN-SPAM/GDPR) and platform ToS apply to real campaigns; this prototype keeps a human in the loop.
+`init-db` writes a schema version and a UTC timestamp. It does not create influencer rows and does not insert sample creators. Audience demographics, emails, and engagement are not stored yet.

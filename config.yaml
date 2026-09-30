@@ -1,4 +1,6 @@
-# Edit the brand block: this is a PLACEHOLDER brand used for personalization.
+# CreatorReach AI behaviour settings.
+# Put API keys and OAuth paths in the environment (.env), never in this file.
+
 brand:
   name: "YourBrand"
   product: "an AI-powered code review tool for developers"
@@ -20,8 +22,9 @@ discovery:
     - "build AI apps"
     - "data science projects"
   max_results_per_query: 50
-  pages_per_query: 1          # each page of search.list costs 100 quota units
-  quota_budget: 9000          # stop before hitting the 10,000/day default
+  pages_per_query: 1
+  # Retained for the legacy root-level loader. The package reads quota.safety_budget.
+  quota_budget: 9000
   min_followers: 5000
   max_followers: 100000
   recent_videos: 10
@@ -42,11 +45,28 @@ filtering:
     - "developer"
     - "data science"
     - "automation"
-  preferred_countries: []     # e.g. ["US", "IN", "GB"]; empty = no geography preference
-  min_engagement: 1.0         # hard gate (percent)
-  max_inactive_days: 90       # hard gate
+  preferred_countries: []
+  # Both names are accepted. minimum_engagement_rate and recent_upload_days win.
+  min_engagement: 1.0
+  minimum_engagement_rate: 1.0
+  max_inactive_days: 90
+  recent_upload_days: 90
   pass_score: 75
   review_score: 60
+
+quota:
+  # search.list is charged per request/page.
+  search_list: 100
+  channels_list: 1
+  playlist_items_list: 1
+  videos_list: 1
+  daily_budget: 10000
+  safety_budget: 9000
+  safety_margin: 1000
+  search_calls_per_day: 100
+
+cache:
+  ttl_days: 7
 
 data:
   db_path: "data/outreach.db"
