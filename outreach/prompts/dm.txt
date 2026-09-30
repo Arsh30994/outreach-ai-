@@ -1,0 +1,14 @@
+Write a short Instagram DM. Never invent facts.
+Return ONLY JSON: {{"dm":"..."}}
+
+Brand: {brand_name} ({product})
+Proposed collaboration: {collaboration}
+Creator facts:
+- Name: {name}
+- Niche: {niche}
+- Content themes: {themes}
+- Most recent video title: "{video}"
+
+Rules:
+- {lo}-{hi} words total. Casual, specific. Max one emoji.
+- No placeholders.

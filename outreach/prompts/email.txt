@@ -1,0 +1,21 @@
+Write a personalised collaboration email. Never invent facts.
+Return ONLY JSON: {{"subject":"...","body":"..."}}
+
+Brand: {brand_name} - {product}
+Value proposition: {value_prop}
+Proposed collaboration: {collaboration} ({compensation})
+Sender: {sender_name}
+
+Creator facts (ONLY facts you may use):
+- Channel name: {name}
+- Niche: {niche}
+- Content themes: {themes}
+- Content style: {style}
+- Most recent video title: "{video}"
+
+Rules:
+- Body must be {lo}-{hi} words INCLUDING greeting and sign-off.
+- Reference the recent video or a listed theme specifically.
+- State clearly that the collaboration is {compensation}.
+- Do not claim audience demographics or follower numbers.
+- No placeholders such as [Name].

@@ -58,14 +58,16 @@ class CliTests(unittest.TestCase):
             with redirect_stdout(init_out):
                 self.assertEqual(main(["--config", str(config_path), "init-db"]), 0)
                 self.assertEqual(main(["--config", str(config_path), "init-db"]), 0)
-            self.assertIn("schema version 1", init_out.getvalue())
+            self.assertIn("schema version 2", init_out.getvalue())
 
             connection = sqlite3.connect(db_path)
             try:
-                rows = connection.execute("SELECT version, name FROM schema_migrations").fetchall()
+                rows = connection.execute(
+                    "SELECT version, name FROM schema_migrations ORDER BY version"
+                ).fetchall()
             finally:
                 connection.close()
-            self.assertEqual(rows, [(1, "foundation")])
+            self.assertIn((2, "persistence"), rows)
 
             status_after = StringIO()
             quota_out = StringIO()
@@ -74,7 +76,7 @@ class CliTests(unittest.TestCase):
             with redirect_stdout(quota_out):
                 self.assertEqual(main(["--config", str(config_path), "quota"]), 0)
             self.assertIn("Initialized: yes", status_after.getvalue())
-            self.assertIn("Schema version: 1", status_after.getvalue())
+            self.assertIn("Schema version: 2", status_after.getvalue())
             quota = quota_out.getvalue()
             self.assertIn("search.list units per page: 100", quota)
             self.assertIn("units used: 0", quota)

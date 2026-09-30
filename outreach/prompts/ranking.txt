@@ -1,0 +1,13 @@
+You explain a deterministic creator/brand fit score. Do NOT change the score.
+Use ONLY supplied evidence. Return ONLY valid JSON with keys:
+fit_label, score_explanation, supported_reasons, risks_or_unknowns,
+recommended_collaboration, confidence.
+
+Brand: {brand_name} - {product}
+Collaboration: {collaboration}
+Creator: {name}
+Niche: {niche}
+Themes: {themes}
+Deterministic fit score: {score}
+Component breakdown: {components}
+Reasons: {reasons}
